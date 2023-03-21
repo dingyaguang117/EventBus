@@ -1,6 +1,7 @@
 package EventBus
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -30,6 +31,81 @@ func TestSubscribe(t *testing.T) {
 		t.Fail()
 	}
 	if bus.Subscribe("topic", "String") == nil {
+		t.Fail()
+	}
+}
+
+func TestSubscribeWithOptionOnError(t *testing.T) {
+	var (
+		handler1Called bool
+		handler2Called bool
+	)
+
+	bus := New()
+
+	errHandler1 := func(err *HandlingError) {
+		t.Logf("handler1 called with error: %s", err)
+		handler1Called = true
+	}
+
+	errHandler2 := func(err *HandlingError) {
+		handler2Called = true
+	}
+
+	if bus.Subscribe("topic", func() error {
+		return errors.New("test error")
+	}, OptionOnError(errHandler1), OptionOnError(errHandler2)) != nil {
+		t.Fail()
+	}
+
+	bus.Publish("topic")
+
+	if !handler1Called {
+		t.Logf("handler1 not called")
+		t.Fail()
+	}
+
+	if !handler2Called {
+		t.Logf("handler2 not called")
+		t.Fail()
+	}
+}
+
+func TestSubscribeWithRetry(t *testing.T) {
+	var (
+		retryCount       int = 1
+		expectedTryCount int = retryCount + 1
+		actualTryCount   int
+		handlerCalled    bool
+	)
+
+	bus := New()
+
+	errHandler := func(err *HandlingError) {
+		handlerCalled = true
+	}
+
+	err := bus.Subscribe("topic", func() error {
+		actualTryCount += 1
+		return errors.New("test error")
+	},
+		OptionOnError(errHandler),
+		OptionRetry(retryCount, time.Second),
+	)
+
+	if err != nil {
+		t.Fail()
+	}
+
+	bus.Publish("topic")
+
+	if expectedTryCount != actualTryCount {
+		t.Logf("expected %d tries, got %d", expectedTryCount, actualTryCount)
+		t.Fail()
+	}
+
+	if !handlerCalled {
+		t.Logf("handler not called")
 		t.Fail()
 	}
 }

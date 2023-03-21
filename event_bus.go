@@ -47,7 +47,7 @@ type eventHandler struct {
 	async         bool
 	transactional bool
 	sync.Mutex                   // lock for an event handler - useful for running async callbacks serially
-	errorHandlers []errorHandler // error handlers
+	errorHandlers []ErrorHandler // error handlers
 	retryCount    int
 	retryDelay    time.Duration
 }
@@ -55,8 +55,8 @@ type eventHandler struct {
 // Option is a function to set eventHandler's properties that can effect the behavior of Publish
 type Option func(*eventHandler)
 
-// OptionWhenError adds an error handler to the event handler
-func OptionWhenError(errorHandler errorHandler) Option {
+// OptionOnError adds an error handler to the event handler
+func OptionOnError(errorHandler ErrorHandler) Option {
 	return func(handler *eventHandler) {
 		handler.errorHandlers = append(handler.errorHandlers, errorHandler)
 	}
@@ -69,7 +69,7 @@ type HandlingError struct {
 	Args     []interface{}
 }
 
-type errorHandler func(err *HandlingError)
+type ErrorHandler func(err *HandlingError)
 
 // OptionRetry adds retry logic to the event handler
 func OptionRetry(retryCount int, retryDelay time.Duration) Option {
@@ -236,6 +236,8 @@ func (bus *EventBus) doExecCallback(handler *eventHandler, topic string, args ..
 				resultError = err
 			}
 		}
+
+		time.Sleep(handler.retryDelay)
 	}
 	if resultError != nil {
 		bus.handleError(resultError, handler, topic, args)
