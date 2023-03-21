@@ -3,6 +3,7 @@ package EventBus
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -19,6 +20,7 @@ type BusSubscriber interface {
 // BusPublisher defines publishing-related bus behavior
 type BusPublisher interface {
 	Publish(topic string, args ...interface{})
+	PublishWithCallbackName(topic string, callbackName string, args ...interface{})
 }
 
 // BusController defines bus control behavior (checking handler's presence, synchronization)
@@ -52,6 +54,10 @@ type eventHandler struct {
 	retryDelay    time.Duration
 }
 
+func (handler *eventHandler) GetCallbackName() string {
+	return runtime.FuncForPC(handler.callBack.Pointer()).Name()
+}
+
 // Option is a function to set eventHandler's properties that can effect the behavior of Publish
 type Option func(*eventHandler)
 
@@ -63,10 +69,11 @@ func OptionOnError(errorHandler ErrorHandler) Option {
 }
 
 type HandlingError struct {
-	Topic    string
-	CallBack reflect.Value
-	Err      error
-	Args     []interface{}
+	Topic        string
+	CallBack     reflect.Value
+	CallBackName string
+	Err          error
+	Args         []interface{}
 }
 
 type ErrorHandler func(err *HandlingError)
@@ -178,6 +185,12 @@ func (bus *EventBus) Unsubscribe(topic string, handler interface{}) error {
 
 // Publish executes callback defined for a topic. Any additional argument will be transferred to the callback.
 func (bus *EventBus) Publish(topic string, args ...interface{}) {
+	bus.PublishWithCallbackName(topic, "", args...)
+}
+
+// PublishWithCallbackName executes specified callback defined for a topic.
+// Any additional argument will be transferred to the callback.
+func (bus *EventBus) PublishWithCallbackName(topic string, callbackName string, args ...interface{}) {
 	// Handlers slice may be changed by removeHandler and Unsubscribe during iteration,
 	// so make a copy and iterate the copied slice.
 	bus.lock.Lock()
@@ -186,6 +199,10 @@ func (bus *EventBus) Publish(topic string, args ...interface{}) {
 	copy(copyHandlers, handlers)
 	bus.lock.Unlock()
 	for _, handler := range copyHandlers {
+		// if callbackName is specified, only execute the callback with the same name
+		if callbackName != "" && handler.GetCallbackName() != callbackName {
+			continue
+		}
 		if !handler.async {
 			bus.doPublish(handler, topic, args...)
 		} else {
@@ -255,10 +272,11 @@ func (bus *EventBus) doPublishAsync(handler *eventHandler, topic string, args ..
 func (bus *EventBus) handleError(err error, eventHandler *eventHandler, topic string, args ...interface{}) {
 	for _, handler := range eventHandler.errorHandlers {
 		handler(&HandlingError{
-			Topic:    topic,
-			CallBack: eventHandler.callBack,
-			Err:      err,
-			Args:     args,
+			Topic:        topic,
+			CallBack:     eventHandler.callBack,
+			CallBackName: eventHandler.GetCallbackName(),
+			Err:          err,
+			Args:         args,
 		})
 	}
 }
