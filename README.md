@@ -7,19 +7,19 @@ Package EventBus is the little and lightweight eventbus with async compatibility
 Make sure that Go is installed on your computer.
 Type the following command in your terminal:
 
-	go get github.com/mysteriumnetwork/EventBus
+	go get github.com/dingyaguang117/EventBus
 
 After it the package is ready to use.
 
 #### Import package in your project
 Add following line in your `*.go` file:
 ```go
-import "github.com/mysteriumnetwork/EventBus"
+import "github.com/dingyaguang117/EventBus"
 ```
 If you unhappy to use long `EventBus`, you can do something like this:
 ```go
 import (
-	evbus "github.com/mysteriumnetwork/EventBus"
+	evbus "github.com/dingyaguang117/EventBus"
 )
 ```
 
@@ -146,13 +146,13 @@ func main() {
 ```
 
 #### Notes
-Documentation is available here: [godoc.org](https://godoc.org/github.com/mysteriumnetwork/EventBus).
-Full information about code coverage is also available here: [EventBus on gocover.io](http://gocover.io/github.com/mysteriumnetwork/EventBus).
+Documentation is available here: [godoc.org](https://godoc.org/github.com/dingyaguang117/EventBus).
+Full information about code coverage is also available here: [EventBus on gocover.io](http://gocover.io/github.com/dingyaguang117/EventBus).
 
 #### Support
 If you do have a contribution for the package feel free to put up a Pull Request or open Issue.
 
-#### Special thanks to [contributors](https://github.com/mysteriumnetwork/EventBus/graphs/contributors)
+#### Special thanks to [contributors](https://github.com/dingyaguang117/EventBus/graphs/contributors)
 * [Brian Downs](https://github.com/briandowns)
 * [Dominik Schulz](https://github.com/gittex)
 * [bennAH](https://github.com/bennAH)
