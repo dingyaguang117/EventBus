@@ -257,7 +257,7 @@ func (bus *EventBus) doExecCallback(handler *eventHandler, topic string, args ..
 		time.Sleep(handler.retryDelay)
 	}
 	if resultError != nil {
-		bus.handleError(resultError, handler, topic, args)
+		bus.handleError(resultError, handler, topic, args...)
 	}
 }
 
