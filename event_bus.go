@@ -66,9 +66,9 @@ func (handler *eventHandler) GetCallbackName() string {
 	return runtime.FuncForPC(handler.callBack.Pointer()).Name()
 }
 
-type BeforeExecuteHookHandler func(handler *eventHandler, topic string, args []interface{})
+type BeforeExecuteHookHandler func(topic string, callbackName string, args []interface{})
 
-type AfterExecuteHookHandler func(handler *eventHandler, topic string, args []interface{}, result error)
+type AfterExecuteHookHandler func(topic string, callbackName string, args []interface{}, result error)
 
 // Option is a function to set eventHandler's properties that can effect the behavior of Publish
 type Option func(*eventHandler)
@@ -261,12 +261,12 @@ func (bus *EventBus) doExecCallback(handler *eventHandler, topic string, args ..
 	passedArguments := bus.setUpPublish(handler, args...)
 
 	for _, hook := range bus.beforeExecuteHooks {
-		hook(handler, topic, args)
+		hook(topic, handler.GetCallbackName(), args)
 	}
 
 	defer func() {
 		for _, hook := range bus.afterExecuteHooks {
-			hook(handler, topic, args, resultError)
+			hook(topic, handler.GetCallbackName(), args, resultError)
 		}
 	}()
 

@@ -337,14 +337,14 @@ var (
 	afterExecuteHookCalled  bool
 )
 
-func BeforeExecuteHook(handler *eventHandler, topic string, args []interface{}) {
+func BeforeExecuteHook(topic string, callbackName string, args []interface{}) {
 	beforeExecuteHookCalled = true
-	fmt.Printf("BeforeExecuteHook, handler: %v, topic: %s, args: %v\n", handler, topic, args)
+	fmt.Printf("BeforeExecuteHook, callbackName: %v, topic: %s, args: %v\n", callbackName, topic, args)
 }
 
-func AfterExecuteHook(handler *eventHandler, topic string, args []interface{}, result error) {
+func AfterExecuteHook(topic string, callbackName string, args []interface{}, result error) {
 	afterExecuteHookCalled = true
-	fmt.Printf("BeforeExecuteHook, handler: %v, topic: %s, args: %v, result: %v\n", handler, topic, args, result)
+	fmt.Printf("BeforeExecuteHook, callbackName: %v, topic: %s, args: %v, result: %v\n", callbackName, topic, args, result)
 }
 
 func TestEventBus_AddBeforeExecuteHook(t *testing.T) {
