@@ -29,18 +29,26 @@ type BusController interface {
 	WaitAsync()
 }
 
+type BusHooker interface {
+	AddBeforeExecuteHook(fn BeforeExecuteHookHandler)
+	AddAfterExecuteHook(fn AfterExecuteHookHandler)
+}
+
 // Bus englobes global (subscribe, publish, control) bus behavior
 type Bus interface {
 	BusController
 	BusSubscriber
 	BusPublisher
+	BusHooker
 }
 
 // EventBus - box for handlers and callbacks.
 type EventBus struct {
-	handlers map[string][]*eventHandler
-	lock     sync.Mutex // a lock for the map
-	wg       sync.WaitGroup
+	handlers           map[string][]*eventHandler
+	beforeExecuteHooks []BeforeExecuteHookHandler
+	afterExecuteHooks  []AfterExecuteHookHandler
+	lock               sync.Mutex // a lock for the map
+	wg                 sync.WaitGroup
 }
 
 type eventHandler struct {
@@ -57,6 +65,10 @@ type eventHandler struct {
 func (handler *eventHandler) GetCallbackName() string {
 	return runtime.FuncForPC(handler.callBack.Pointer()).Name()
 }
+
+type BeforeExecuteHookHandler func(handler *eventHandler, topic string, args []interface{})
+
+type AfterExecuteHookHandler func(handler *eventHandler, topic string, args []interface{}, result error)
 
 // Option is a function to set eventHandler's properties that can effect the behavior of Publish
 type Option func(*eventHandler)
@@ -90,10 +102,20 @@ func OptionRetry(retryCount int, retryDelay time.Duration) Option {
 func New() Bus {
 	b := &EventBus{
 		make(map[string][]*eventHandler),
+		nil,
+		nil,
 		sync.Mutex{},
 		sync.WaitGroup{},
 	}
 	return Bus(b)
+}
+
+func (bus *EventBus) AddBeforeExecuteHook(fn BeforeExecuteHookHandler) {
+	bus.beforeExecuteHooks = append(bus.beforeExecuteHooks, fn)
+}
+
+func (bus *EventBus) AddAfterExecuteHook(fn AfterExecuteHookHandler) {
+	bus.afterExecuteHooks = append(bus.afterExecuteHooks, fn)
 }
 
 // doSubscribe handles the subscription logic and is utilized by the public Subscribe functions
@@ -237,6 +259,16 @@ func (bus *EventBus) doPublish(handler *eventHandler, topic string, args ...inte
 func (bus *EventBus) doExecCallback(handler *eventHandler, topic string, args ...interface{}) {
 	var resultError error
 	passedArguments := bus.setUpPublish(handler, args...)
+
+	for _, hook := range bus.beforeExecuteHooks {
+		hook(handler, topic, args)
+	}
+
+	defer func() {
+		for _, hook := range bus.afterExecuteHooks {
+			hook(handler, topic, args, resultError)
+		}
+	}()
 
 	// retry logic
 	for i := 0; i < handler.retryCount+1; i++ {

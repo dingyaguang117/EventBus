@@ -2,6 +2,7 @@ package EventBus
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -329,4 +330,38 @@ func TestSubscribeAsync(t *testing.T) {
 	//if numResults != 2 {
 	//	t.Fail()
 	//}
+}
+
+var (
+	beforeExecuteHookCalled bool
+	afterExecuteHookCalled  bool
+)
+
+func BeforeExecuteHook(handler *eventHandler, topic string, args []interface{}) {
+	beforeExecuteHookCalled = true
+	fmt.Printf("BeforeExecuteHook, handler: %v, topic: %s, args: %v\n", handler, topic, args)
+}
+
+func AfterExecuteHook(handler *eventHandler, topic string, args []interface{}, result error) {
+	afterExecuteHookCalled = true
+	fmt.Printf("BeforeExecuteHook, handler: %v, topic: %s, args: %v, result: %v\n", handler, topic, args, result)
+}
+
+func TestEventBus_AddBeforeExecuteHook(t *testing.T) {
+	bus := New()
+	bus.Subscribe("topic", handler1)
+	bus.Subscribe("topic", handler2)
+	bus.AddBeforeExecuteHook(BeforeExecuteHook)
+	bus.AddAfterExecuteHook(AfterExecuteHook)
+	bus.Publish("topic")
+
+	if !beforeExecuteHookCalled {
+		t.Logf("BeforeExecuteHook not called")
+		t.Fail()
+	}
+
+	if !afterExecuteHookCalled {
+		t.Logf("AfterExecuteHook not called")
+		t.Fail()
+	}
 }
