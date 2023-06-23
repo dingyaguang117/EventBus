@@ -337,24 +337,23 @@ var (
 	afterExecuteHookCalled  bool
 )
 
-func BeforeExecuteHook(topic string, callbackName string, args []interface{}) {
-	beforeExecuteHookCalled = true
-	fmt.Printf("BeforeExecuteHook, callbackName: %v, topic: %s, args: %v\n", callbackName, topic, args)
+func LoggingHook(next BusExecuteFunc) BusExecuteFunc {
+	return func(handler *eventHandler, topic string, args ...interface{}) error {
+		fmt.Printf("Before execute callbackName: %v, topic: %s, args: %v\n", handler.GetCallbackName(), topic, args)
+		beforeExecuteHookCalled = true
+		err := next(handler, topic, args...)
+		fmt.Printf("After execute callbackName: %v, topic: %s, args: %v\n", handler.GetCallbackName(), topic, args)
+		afterExecuteHookCalled = true
+		return err
+	}
 }
 
-func AfterExecuteHook(topic string, callbackName string, args []interface{}, result error) {
-	afterExecuteHookCalled = true
-	fmt.Printf("BeforeExecuteHook, callbackName: %v, topic: %s, args: %v, result: %v\n", callbackName, topic, args, result)
-}
-
-func TestEventBus_AddBeforeExecuteHook(t *testing.T) {
+func TestEventBus_AddHook(t *testing.T) {
 	bus := New()
 	bus.Subscribe("topic", handler1)
 	bus.Subscribe("topic", handler2)
-	bus.AddBeforeExecuteHook(BeforeExecuteHook)
-	bus.AddAfterExecuteHook(AfterExecuteHook)
+	bus.AddHook(LoggingHook)
 	bus.Publish("topic")
-
 	if !beforeExecuteHookCalled {
 		t.Logf("BeforeExecuteHook not called")
 		t.Fail()

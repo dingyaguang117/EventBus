@@ -2,6 +2,7 @@ package EventBus
 
 import (
 	"fmt"
+	"github.com/dingyaguang117/go-hooker/hooker"
 	"reflect"
 	"runtime"
 	"sync"
@@ -30,9 +31,10 @@ type BusController interface {
 }
 
 type BusHooker interface {
-	AddBeforeExecuteHook(fn BeforeExecuteHookHandler)
-	AddAfterExecuteHook(fn AfterExecuteHookHandler)
+	AddHook(hook hooker.Hook[BusExecuteFunc])
 }
+
+type BusExecuteFunc func(handler *eventHandler, topic string, args ...interface{}) (resultError error)
 
 // Bus englobes global (subscribe, publish, control) bus behavior
 type Bus interface {
@@ -44,11 +46,10 @@ type Bus interface {
 
 // EventBus - box for handlers and callbacks.
 type EventBus struct {
-	handlers           map[string][]*eventHandler
-	beforeExecuteHooks []BeforeExecuteHookHandler
-	afterExecuteHooks  []AfterExecuteHookHandler
-	lock               sync.Mutex // a lock for the map
-	wg                 sync.WaitGroup
+	handlers map[string][]*eventHandler
+	hooker   *hooker.Hooker[BusExecuteFunc]
+	lock     sync.Mutex // a lock for the map
+	wg       sync.WaitGroup
 }
 
 type eventHandler struct {
@@ -65,10 +66,6 @@ type eventHandler struct {
 func (handler *eventHandler) GetCallbackName() string {
 	return runtime.FuncForPC(handler.callBack.Pointer()).Name()
 }
-
-type BeforeExecuteHookHandler func(topic string, callbackName string, args []interface{})
-
-type AfterExecuteHookHandler func(topic string, callbackName string, args []interface{}, result error)
 
 // Option is a function to set eventHandler's properties that can effect the behavior of Publish
 type Option func(*eventHandler)
@@ -103,19 +100,16 @@ func New() Bus {
 	b := &EventBus{
 		make(map[string][]*eventHandler),
 		nil,
-		nil,
 		sync.Mutex{},
 		sync.WaitGroup{},
 	}
+	h := hooker.NewHooker[BusExecuteFunc](b.doExecCallback)
+	b.hooker = h
 	return Bus(b)
 }
 
-func (bus *EventBus) AddBeforeExecuteHook(fn BeforeExecuteHookHandler) {
-	bus.beforeExecuteHooks = append(bus.beforeExecuteHooks, fn)
-}
-
-func (bus *EventBus) AddAfterExecuteHook(fn AfterExecuteHookHandler) {
-	bus.afterExecuteHooks = append(bus.afterExecuteHooks, fn)
+func (bus *EventBus) AddHook(hook hooker.Hook[BusExecuteFunc]) {
+	bus.hooker.AddHook(hook)
 }
 
 // doSubscribe handles the subscription logic and is utilized by the public Subscribe functions
@@ -239,7 +233,7 @@ func (bus *EventBus) PublishWithCallbackName(topic string, callbackName string, 
 
 func (bus *EventBus) doPublish(handler *eventHandler, topic string, args ...interface{}) {
 	if handler.once == nil {
-		bus.doExecCallback(handler, topic, args...)
+		_ = bus.doExecCallbackWithHook(handler, topic, args...)
 	} else {
 		handler.once.Do(func() {
 			bus.lock.Lock()
@@ -251,25 +245,17 @@ func (bus *EventBus) doPublish(handler *eventHandler, topic string, args ...inte
 				}
 			}
 			bus.lock.Unlock()
-			bus.doExecCallback(handler, topic, args...)
+			_ = bus.doExecCallbackWithHook(handler, topic, args...)
 		})
 	}
 }
 
-func (bus *EventBus) doExecCallback(handler *eventHandler, topic string, args ...interface{}) {
-	var resultError error
+func (bus *EventBus) doExecCallbackWithHook(handler *eventHandler, topic string, args ...interface{}) (resultError error) {
+	return bus.hooker.GetWrapped()(handler, topic, args...)
+}
+
+func (bus *EventBus) doExecCallback(handler *eventHandler, topic string, args ...interface{}) (resultError error) {
 	passedArguments := bus.setUpPublish(handler, args...)
-
-	for _, hook := range bus.beforeExecuteHooks {
-		hook(topic, handler.GetCallbackName(), args)
-	}
-
-	defer func() {
-		for _, hook := range bus.afterExecuteHooks {
-			hook(topic, handler.GetCallbackName(), args, resultError)
-		}
-	}()
-
 	// retry logic
 	for i := 0; i < handler.retryCount+1; i++ {
 		result := handler.callBack.Call(passedArguments)
@@ -291,6 +277,7 @@ func (bus *EventBus) doExecCallback(handler *eventHandler, topic string, args ..
 	if resultError != nil {
 		bus.handleError(resultError, handler, topic, args...)
 	}
+	return resultError
 }
 
 func (bus *EventBus) doPublishAsync(handler *eventHandler, topic string, args ...interface{}) {
