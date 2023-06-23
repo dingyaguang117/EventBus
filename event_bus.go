@@ -34,7 +34,9 @@ type BusHooker interface {
 	AddHook(hook hooker.Hook[BusExecuteFunc])
 }
 
-type BusExecuteFunc func(handler *eventHandler, topic string, args ...interface{}) (resultError error)
+type BusExecuteFunc func(handler *EventHandler, topic string, args ...interface{}) (resultError error)
+
+type BusHook hooker.Hook[BusExecuteFunc]
 
 // Bus englobes global (subscribe, publish, control) bus behavior
 type Bus interface {
@@ -46,13 +48,13 @@ type Bus interface {
 
 // EventBus - box for handlers and callbacks.
 type EventBus struct {
-	handlers map[string][]*eventHandler
+	handlers map[string][]*EventHandler
 	hooker   *hooker.Hooker[BusExecuteFunc]
 	lock     sync.Mutex // a lock for the map
 	wg       sync.WaitGroup
 }
 
-type eventHandler struct {
+type EventHandler struct {
 	callBack      reflect.Value
 	once          *sync.Once
 	async         bool
@@ -63,16 +65,16 @@ type eventHandler struct {
 	retryDelay    time.Duration
 }
 
-func (handler *eventHandler) GetCallbackName() string {
+func (handler *EventHandler) GetCallbackName() string {
 	return runtime.FuncForPC(handler.callBack.Pointer()).Name()
 }
 
-// Option is a function to set eventHandler's properties that can effect the behavior of Publish
-type Option func(*eventHandler)
+// Option is a function to set EventHandler's properties that can effect the behavior of Publish
+type Option func(*EventHandler)
 
 // OptionOnError adds an error handler to the event handler
 func OptionOnError(errorHandler ErrorHandler) Option {
-	return func(handler *eventHandler) {
+	return func(handler *EventHandler) {
 		handler.errorHandlers = append(handler.errorHandlers, errorHandler)
 	}
 }
@@ -89,7 +91,7 @@ type ErrorHandler func(err *HandlingError)
 
 // OptionRetry adds retry logic to the event handler
 func OptionRetry(retryCount int, retryDelay time.Duration) Option {
-	return func(handler *eventHandler) {
+	return func(handler *EventHandler) {
 		handler.retryCount = retryCount
 		handler.retryDelay = retryDelay
 	}
@@ -98,7 +100,7 @@ func OptionRetry(retryCount int, retryDelay time.Duration) Option {
 // New returns new EventBus with empty handlers.
 func New() Bus {
 	b := &EventBus{
-		make(map[string][]*eventHandler),
+		make(map[string][]*EventHandler),
 		nil,
 		sync.Mutex{},
 		sync.WaitGroup{},
@@ -113,7 +115,7 @@ func (bus *EventBus) AddHook(hook hooker.Hook[BusExecuteFunc]) {
 }
 
 // doSubscribe handles the subscription logic and is utilized by the public Subscribe functions
-func (bus *EventBus) doSubscribe(topic string, fn interface{}, handler *eventHandler) error {
+func (bus *EventBus) doSubscribe(topic string, fn interface{}, handler *EventHandler) error {
 	bus.lock.Lock()
 	defer bus.lock.Unlock()
 	if !(reflect.TypeOf(fn).Kind() == reflect.Func) {
@@ -126,7 +128,7 @@ func (bus *EventBus) doSubscribe(topic string, fn interface{}, handler *eventHan
 // Subscribe subscribes to a topic.
 // Returns error if `fn` is not a function.
 func (bus *EventBus) Subscribe(topic string, fn interface{}, options ...Option) error {
-	h := &eventHandler{
+	h := &EventHandler{
 		callBack: reflect.ValueOf(fn),
 	}
 	for _, option := range options {
@@ -140,7 +142,7 @@ func (bus *EventBus) Subscribe(topic string, fn interface{}, options ...Option) 
 // run serially (true) or concurrently (false)
 // Returns error if `fn` is not a function.
 func (bus *EventBus) SubscribeAsync(topic string, fn interface{}, transactional bool, options ...Option) error {
-	h := &eventHandler{
+	h := &EventHandler{
 		callBack:      reflect.ValueOf(fn),
 		async:         true,
 		transactional: transactional,
@@ -154,7 +156,7 @@ func (bus *EventBus) SubscribeAsync(topic string, fn interface{}, transactional 
 // SubscribeOnce subscribes to a topic once. Handler will be removed after executing.
 // Returns error if `fn` is not a function.
 func (bus *EventBus) SubscribeOnce(topic string, fn interface{}, options ...Option) error {
-	h := &eventHandler{
+	h := &EventHandler{
 		callBack: reflect.ValueOf(fn), once: new(sync.Once),
 	}
 	for _, option := range options {
@@ -167,7 +169,7 @@ func (bus *EventBus) SubscribeOnce(topic string, fn interface{}, options ...Opti
 // Handler will be removed after executing.
 // Returns error if `fn` is not a function.
 func (bus *EventBus) SubscribeOnceAsync(topic string, fn interface{}, options ...Option) error {
-	h := &eventHandler{
+	h := &EventHandler{
 		callBack: reflect.ValueOf(fn), once: new(sync.Once), async: true,
 	}
 	for _, option := range options {
@@ -211,7 +213,7 @@ func (bus *EventBus) PublishWithCallbackName(topic string, callbackName string, 
 	// so make a copy and iterate the copied slice.
 	bus.lock.Lock()
 	handlers := bus.handlers[topic]
-	copyHandlers := make([]*eventHandler, len(handlers))
+	copyHandlers := make([]*EventHandler, len(handlers))
 	copy(copyHandlers, handlers)
 	bus.lock.Unlock()
 	for _, handler := range copyHandlers {
@@ -231,7 +233,7 @@ func (bus *EventBus) PublishWithCallbackName(topic string, callbackName string, 
 	}
 }
 
-func (bus *EventBus) doPublish(handler *eventHandler, topic string, args ...interface{}) {
+func (bus *EventBus) doPublish(handler *EventHandler, topic string, args ...interface{}) {
 	if handler.once == nil {
 		_ = bus.doExecCallbackWithHook(handler, topic, args...)
 	} else {
@@ -250,11 +252,11 @@ func (bus *EventBus) doPublish(handler *eventHandler, topic string, args ...inte
 	}
 }
 
-func (bus *EventBus) doExecCallbackWithHook(handler *eventHandler, topic string, args ...interface{}) (resultError error) {
+func (bus *EventBus) doExecCallbackWithHook(handler *EventHandler, topic string, args ...interface{}) (resultError error) {
 	return bus.hooker.GetWrapped()(handler, topic, args...)
 }
 
-func (bus *EventBus) doExecCallback(handler *eventHandler, topic string, args ...interface{}) (resultError error) {
+func (bus *EventBus) doExecCallback(handler *EventHandler, topic string, args ...interface{}) (resultError error) {
 	passedArguments := bus.setUpPublish(handler, args...)
 	// retry logic
 	for i := 0; i < handler.retryCount+1; i++ {
@@ -280,7 +282,7 @@ func (bus *EventBus) doExecCallback(handler *eventHandler, topic string, args ..
 	return resultError
 }
 
-func (bus *EventBus) doPublishAsync(handler *eventHandler, topic string, args ...interface{}) {
+func (bus *EventBus) doPublishAsync(handler *EventHandler, topic string, args ...interface{}) {
 	defer bus.wg.Done()
 	if handler.transactional {
 		defer handler.Unlock()
@@ -288,7 +290,7 @@ func (bus *EventBus) doPublishAsync(handler *eventHandler, topic string, args ..
 	bus.doPublish(handler, topic, args...)
 }
 
-func (bus *EventBus) handleError(err error, eventHandler *eventHandler, topic string, args ...interface{}) {
+func (bus *EventBus) handleError(err error, eventHandler *EventHandler, topic string, args ...interface{}) {
 	for _, handler := range eventHandler.errorHandlers {
 		handler(&HandlingError{
 			Topic:        topic,
@@ -327,7 +329,7 @@ func (bus *EventBus) findHandlerIdx(topic string, callback reflect.Value) int {
 	return -1
 }
 
-func (bus *EventBus) setUpPublish(callback *eventHandler, args ...interface{}) []reflect.Value {
+func (bus *EventBus) setUpPublish(callback *EventHandler, args ...interface{}) []reflect.Value {
 	funcType := callback.callBack.Type()
 	passedArguments := make([]reflect.Value, len(args))
 	for i, v := range args {

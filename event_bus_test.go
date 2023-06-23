@@ -338,7 +338,7 @@ var (
 )
 
 func LoggingHook(next BusExecuteFunc) BusExecuteFunc {
-	return func(handler *eventHandler, topic string, args ...interface{}) error {
+	return func(handler *EventHandler, topic string, args ...interface{}) error {
 		fmt.Printf("Before execute callbackName: %v, topic: %s, args: %v\n", handler.GetCallbackName(), topic, args)
 		beforeExecuteHookCalled = true
 		err := next(handler, topic, args...)
