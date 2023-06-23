@@ -31,7 +31,7 @@ type BusController interface {
 }
 
 type BusHooker interface {
-	AddHook(hook hooker.Hook[BusExecuteFunc])
+	AddHook(hook BusHook)
 }
 
 type BusExecuteFunc func(handler *EventHandler, topic string, args ...interface{}) (resultError error)
@@ -110,8 +110,8 @@ func New() Bus {
 	return Bus(b)
 }
 
-func (bus *EventBus) AddHook(hook hooker.Hook[BusExecuteFunc]) {
-	bus.hooker.AddHook(hook)
+func (bus *EventBus) AddHook(hook BusHook) {
+	bus.hooker.AddHook(hooker.Hook[BusExecuteFunc](hook))
 }
 
 // doSubscribe handles the subscription logic and is utilized by the public Subscribe functions
